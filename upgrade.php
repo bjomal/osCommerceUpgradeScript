@@ -3,7 +3,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // NOTE! This script is created for PHP version 5.3+
-// test
+// 
 
 
 require('includes/configure.php');
