@@ -4,8 +4,6 @@ ini_set('display_errors', 1);
 
 // NOTE! This script is created for PHP version 5.3+
 // 
-
-
 require('includes/configure.php');
 
 $title = "osCommerce upgrade script";
@@ -25,26 +23,34 @@ define('COLOR_SUCCESS', "efffdb");
 define('COLOR_WARNING', "ffe896");
 define('COLOR_ERROR', "ffaca1");
 define('THIS_SCRIPT', $_SERVER['PHP_SELF']); //__FILE__);
-define('SESSION_NAME', "osCommerceUpgrade");
+define('SESSION_NAME', "osCommerceUpgrade_XXBAFS");
 //define('BROWSE_BASEDIR', "./");
 define('BROWSE_BASEDIR', "/var/www/7zinz/");   // TODO: Set this dynamically as one level up.
 
 // misc variables
 $defaultValue['bash_folder'] = BROWSE_BASEDIR . 'bin';
-$defaultValue['relative_dir'] = str_replace(BROWSE_BASEDIR, '', __DIR__);
+$defaultValue['relative_dir'] = trailingSlash(str_replace(BROWSE_BASEDIR, '', dirname($_SERVER["SCRIPT_FILENAME"])));
 $defaultValue['script_version'] = '0.1 ' .  date ("Y-m-d H:i:s.", filemtime(__FILE__));
-$defaultValue['temp_folder'] = "tmp_upgrade";
+$defaultValue['temp_folder'] = "tmp_upgrade/";
 
 // Values used for tests
 $defaultValue['php_version'] = '5.3';
-$defaultValue['catalog_write'] = $defaultValue['relative_dir'];
-$defaultValue['temp_folder_write'] = $defaultValue['relative_dir'];
+$defaultValue['catalog_write'] = trailingSlash($defaultValue['relative_dir']);
+$defaultValue['temp_folder_write'] = trailingSlash($defaultValue['relative_dir']);
+$defaultValue['upgrade_sql_script'] = trailingSlash($defaultValue['temp_folder_write']); 
+$defaultValue['upgrade_sql_script'] .= trailingSlash($defaultValue['temp_folder']) . 'sql_changes_ms2.2_to_2.3.4.sql';
+$defaultValue['oscommerce_file'] = trailingSlash($defaultValue['temp_folder_write']);
+$defaultValue['oscommerce_file'] .= trailingSlash($defaultValue['temp_folder']) . 'oscommerce-2.3.4.zip';
+$defaultValue['database_connection'] = "SELECT configuration_title, configuration_value FROM configuration WHERE configuration_id < 4";
+
 
 $session = new Session(SESSION_NAME);
 
 // Some global variables:
 $testList = array();
 
+
+//xdebug_break();
 
 
 //####################################################
@@ -69,6 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				Http::response200('OK', runBash('reload') . '<a href="javascript:history.go(-1);">Tilbake</a>'); break;
 			case 'restore': // DEVELOPEMENT PURPOSE ONLY reset environment 
 				Http::response200('OK', runBash('restore') . '<a href="javascript:history.go(-1);">Tilbake</a>'); break;
+			case 'runsql': 	// set session variable
+				Http::response200('OK', commandRunSQL()); break;
+			case 'upgradefiles': 	// set session variable
+				Http::response200('OK', commandUpgradeFiles()); break;
 			default: 
 				Http::response400('Bad Request for Command: ' . $command); break;
 		}
@@ -108,6 +118,56 @@ function commandCreate() {
 	} 
 	return json_encode($result);
 }
+
+function commandRunSQL() {
+	$result = array('runsql' => 'nothing');
+	// TODO: Run Database SQL script 
+		
+	return json_encode($result);
+} // commandUpgradeSQL
+
+function commandUpgradeFiles() {
+	$result = array('upgradefiles' => 'nothing');
+	$outputdata = '';
+	// TODO: overwrite osCommerce files
+
+	$file = BROWSE_BASEDIR . $session->oscommerce_file;
+	
+	if (isset($file))
+	{
+		$outputdata .= "Unzipping " . $file . "\n";
+		$outputdata .= shell_exec('unzip -o ' . $file . ' -d ' . BROWSE_BASEDIR . $session->temp_folder_write . "/" . $session->temp_folder );
+		
+	}
+	
+	// create a handler to read the directory contents
+	$handler = opendir(".");
+	
+	echo "Please choose a file to unzip: " . "<br>";
+	
+	// A blank action field posts the form to itself
+	echo '<FORM action="" method="get">';
+	
+	$found = FALSE; // Used to see if there were any valid files
+	
+	// keep going until all files in directory have been read
+	while ($file = readdir($handler))
+	{
+		if (preg_match ("/.zip$/i", $file))
+		{
+			echo '<input type="radio" name="file" value=' . $file . '> ' . $file . '<br>';
+			$found = true;
+		}
+	}
+	
+	closedir($handler);	
+	
+	
+	
+	
+	
+	return json_encode($result);
+} // commandUpgradeFiles
 
 function runBash($command) {
 	global $session;
@@ -166,9 +226,9 @@ $testList[$key]->addAction(new Action('debug', $key, "Debug", $testList[$key]->r
 // ______________________________
 // ===== temp_folder_create =====
 // ******************************
-$key = 'temp_folder_create';
+$key = 'temp_folder_write';
 $testList[$key] = new UpgradeTest($key, 'Script needs writable TEMP-folder for working files');
-$testList[$key]->value = strlen($session->{$key}) > 0 ? rtrim($session->{$key}) . '/' : '';
+$testList[$key]->value = trailingSlash($session->{$key});
 $testList[$key]->value .=  $session->{'temp_folder'};
 $testList[$key]->result = file_exists(BROWSE_BASEDIR . $testList[$key]->value) ? ( is_writable(BROWSE_BASEDIR . $testList[$key]->value) ? STATUS_SUCCESS : STATUS_WARNING ) : STATUS_ERROR;
 $testList[$key]->setOnChangeScript("
@@ -188,6 +248,72 @@ $testList[$key]->addAction(new Action('createfolder', $key, "Create folder", $te
 	->setOnClickScript("createFolder(\"" . $key . "\"); ");
 $testList[$key]->addAction(new Action('debug', $key, "Debug", $testList[$key]->result, STATUS_NONE))
 	->setOnClickScript("alert(\"Folder: " . BROWSE_BASEDIR . $testList[$key]->value . "\"); ");
+
+// ______________________________
+// ===== upgrade_sql_script =====
+// ******************************
+$key = 'upgrade_sql_script';
+$testList[$key] = new UpgradeTest($key, 'Location of Database upgrade script');
+$testList[$key]->value = $session->{$key};
+$testList[$key]->result = is_readable(BROWSE_BASEDIR . $testList[$key]->value) ? STATUS_SUCCESS : STATUS_ERROR;
+$testList[$key]->setOnChangeScript("
+		value = value || \"Default Value\";
+		var el = document.getElementById(\"" . $key . ".value\");
+		var inner = '';
+		if (selectedPath.length > 0) { inner += selectedPath.replace(/\/+$/,'') + '/'; }
+		el.innerHTML = inner + '" . $session->{'temp_folder'} . "';
+		commandSet(\"" . $key . "\", selectedPath);
+
+		alert(\"" . $key . " got OnChangeEvent!!! value=\" + value);
+	");
+
+$testList[$key]->addAction(new Action('browse', $key, "Browse for file", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("getFile(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('uploadfile', $key, "Upload File...", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("createFolder(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('getfile', $key, "Retreive File from site", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("createFolder(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('debug', $key, "Debug", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("alert(\"Folder: " . BROWSE_BASEDIR . $testList[$key]->value . "\"); ");
+
+// ___________________________
+// ===== oscommerce_file =====
+// ***************************
+$key = 'oscommerce_file';
+$testList[$key] = new UpgradeTest($key, 'Location of new osCommerce version (zip)');
+$testList[$key]->value = $session->{$key};
+$testList[$key]->result = is_readable(BROWSE_BASEDIR . $testList[$key]->value) ? STATUS_SUCCESS : STATUS_ERROR;
+$testList[$key]->setOnChangeScript("
+		value = value || \"Default Value\";
+		var el = document.getElementById(\"" . $key . ".value\");
+		var inner = '';
+		if (selectedPath.length > 0) { inner += selectedPath.replace(/\/+$/,'') + '/'; }
+		el.innerHTML = inner + '" . $session->{'temp_folder'} . "';
+		commandSet(\"" . $key . "\", selectedPath);
+
+		alert(\"" . $key . " got OnChangeEvent!!! value=\" + value);
+	");
+
+$testList[$key]->addAction(new Action('browse', $key, "Browse for file", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("getFile(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('uploadfile', $key, "Upload File...", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("createFolder(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('getfile', $key, "Retreive File from site", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("createFolder(\"" . $key . "\"); ");
+$testList[$key]->addAction(new Action('debug', $key, "Debug", $testList[$key]->result, STATUS_NONE))
+->setOnClickScript("alert(\"Folder: " . BROWSE_BASEDIR . $testList[$key]->value . "\"); ");
+
+// _______________________________
+// ===== database_connection =====
+// *******************************
+$key = 'database_connection';
+$testList[$key] = new UpgradeTest($key, 'Connection to Database');
+$testList[$key]->value = $session->{$key};
+$testResult = testDatabaseConnection($session->{$key});
+$testList[$key]->result = $testResult['status'];
+$testList[$key]->description .= "\n<br>" . $testResult['result'];
+
+
 
 
 } // listTests 
@@ -213,10 +339,11 @@ function displayTestsPageHTML() {
 	echo "</head>";
 	echo "<body>\n";
 	echo "<img border=\"0\" width=\"40px\" src=\"" . LOGO . "\">\n";
-	echo "<div class\"versionString\">version: <span id=\"script_version\">" . $session->{'script_version'} . "</span> <button onclick=\"runBash('reload'); false\">Reload script</button> <button onclick=\"runBash('restore'); false\">Restore All</button></div>\n";
+	echo "<div class\"versionString\">version: <span id=\"script_version\">" . $session->{'script_version'} . "</span> ";
+	echo "<button onclick=\"runBash('reload'); false\">Reload script</button> <button onclick=\"runBash('restore'); false\">Restore All</button> ";
+	echo "<button onclick=\"javascript:window.open('tests.php', 'upgrade_tests');\">Tests</button></div>\n";
 	echo "<h1 class=\"center\">$title</h1>\n";
-
-	echo "<button  onclick=\"startBrowserDialog();\">Test Me</button>\n";
+	echo "<button onclick=\"startBrowserDialog();\">Test Me</button>\n";
 
 	echo "<div class=\"center\">\n<table><tr>";
 	echo "<th>Description</th>" . "<th>Value</th>" . "<th>Status</th>" . "<th>Actions</th>";
@@ -235,6 +362,9 @@ function displayTestsPageHTML() {
 	//phpinfo();
 	//$file_browser=&new file_browser('images', "elementary");
 
+	echo "<a href=\"" . THIS_SCRIPT . "?\"></a>";
+	
+	
 	displayBrowserHtml();
 	displayLoaderHtml();
 	displayDebugHTML();
@@ -283,7 +413,7 @@ img.odf, img.crt, img.ctg, img.ttf { content: url(data:image/png;base64,iVBORw0K
 img.folder { content: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAGrSURBVDjLxZO7ihRBFIa/6u0ZW7GHBUV0UQQTZzd3QdhMQxOfwMRXEANBMNQX0MzAzFAwEzHwARbNFDdwEd31Mj3X7a6uOr9BtzNjYjKBJ6nicP7v3KqcJFaxhBVtZUAK8OHlld2st7Xl3DJPVONP+zEUV4HqL5UDYHr5xvuQAjgl/Qs7TzvOOVAjxjlC+ePSwe6DfbVegLVuT4r14eTr6zvA8xSAoBLzx6pvj4l+DZIezuVkG9fY2H7YRQIMZIBwycmzH1/s3F8AapfIPNF3kQk7+kw9PWBy+IZOdg5Ug3mkAATy/t0usovzGeCUWTjCz0B+Sj0ekfdvkZ3abBv+U4GaCtJ1iEm6ANQJ6fEzrG/engcKw/wXQvEKxSEKQxRGKE7Izt+DSiwBJMUSm71rguMYhQKrBygOIRStf4TiFFRBvbRGKiQLWP29yRSHKBTtfdBmHs0BUpgvtgF4yRFR+NUKi0XZcYjCeCG2smkzLAHkbRBmP0/Uk26O5YnUActBp1GsAI+S5nRJJJal5K1aAMrq0d6Tm9uI6zjyf75dAe6tx/SsWeD//o2/Ab6IH3/h25pOAAAAAElFTkSuQmCC); }
 
 /* Loader image */
-img.loader { width: 128px; height: 128px; content: url(<?= LOADER_128 ?>); }
+img.loader, img.loader:after { width: 128px; height: 128px; content: url(<?= LOADER_128 ?>); }
 
 
 /* check list page styling */
@@ -330,31 +460,7 @@ function displayTestsPageJs() {
 		echo $testList[$key]->getJavaScripts() . "\n";
 	}
 	echo "</script>\n";
-
 }
-
-function comparePHPVersion($version) {
-	return compareVersion($version, phpversion());
-}
-
-
-function compareVersion($requiredVersion, $currentVersion, $deviationLimit = 2) {
-	$required = explode('.', $requiredVersion);
-	$current = explode('.', $currentVersion);
-
-	if ($current[0] < $required[0]) {
-		return STATUS_ERROR;
-	} elseif ($current[0] > $required[0]) {
-		return STATUS_SUCCESS;
-	} elseif ($current[1] < $required[1]) {
-		return STATUS_ERROR;
-	} elseif ($current[1] < ($required[1]+$deviationLimit)) { // If less than .2 versions above give warning
-		return STATUS_WARNING;
-	} else {
-		return STATUS_SUCCESS;
-	}
-}
-
 
 function displayPageJs() {
 	echo "\n";
@@ -577,6 +683,57 @@ function createFolder(target) {
 </script>
 <?php
 	echo "\n";
+}
+
+
+
+
+// ###################################
+// ##### Misc Utility Functions ######
+// ###################################
+function comparePHPVersion($version) {
+	return compareVersion($version, phpversion());
+}
+
+function compareVersion($requiredVersion, $currentVersion, $deviationLimit = 2) {
+	$required = explode('.', $requiredVersion);
+	$current = explode('.', $currentVersion);
+
+	if ($current[0] < $required[0]) {
+		return STATUS_ERROR;
+	} elseif ($current[0] > $required[0]) {
+		return STATUS_SUCCESS;
+	} elseif ($current[1] < $required[1]) {
+		return STATUS_ERROR;
+	} elseif ($current[1] < ($required[1]+$deviationLimit)) { // If less than .2 versions above give warning
+		return STATUS_WARNING;
+	} else {
+		return STATUS_SUCCESS;
+	}
+} // compareVersion
+
+function testDatabaseConnection($query) {
+	$status = array('status' => STATUS_NONE, 'result' => '');
+	$mysqli = new mysqli(DB_SERVER, DB_SERVER_USERNAME, DB_SERVER_PASSWORD, DB_DATABASE);
+	if ($mysqli->connect_error) { $status['status'] = STATUS_ERROR; 
+		$status['result'] = 'connect error (' . $mysqli->connect_errno . ') ' . $mysqli->connect_error; return $status; 
+	}
+	if ($result = $mysqli->query($query)) {$status['result'] = "returned rows: " . $result->num_rows . "\n";  
+		$data = $result->fetch_all(MYSQLI_ASSOC); $result->close();
+		$status['result'] .= print_r($data, true); 
+		$status['status'] = STATUS_SUCCESS; return $status;
+	} else {
+		$status['result'] = 'Crap, Connect OK but no query results';
+		$status['status'] = STATUS_WARNING; return $status;
+	}	
+	
+	
+	return $status;
+	
+} //testDatabaseConnection 
+
+function trailingSlash($foldername, $addslash = true) { $slash = ''; if ($addslash) {$slash = '/';}
+	return strlen($foldername) > 0 ? rtrim($foldername, '/') . $slash : '';
 }
 
 
@@ -1063,6 +1220,9 @@ class UpgradeTest {
 		$this->errortext = "";
 	}
 
+	public function setDescription($description) { $this->description = $description; return $this; }
+	public function getDescription() { return $this->description; }
+	
 	public function addAction($action) {
 		$this->actionList[] = $action;
 		return $action;
