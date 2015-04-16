@@ -127,44 +127,19 @@ function commandRunSQL() {
 } // commandUpgradeSQL
 
 function commandUpgradeFiles() {
-	$result = array('upgradefiles' => 'nothing');
+	global $session;
+	$result = array('upgradefiles' => 'nothing', 'shell_log' => '');
 	$outputdata = '';
 	// TODO: overwrite osCommerce files
 
 	$file = BROWSE_BASEDIR . $session->oscommerce_file;
+	$dest = BROWSE_BASEDIR . $session->temp_folder_write . $session->temp_folder;
 	
-	if (isset($file))
-	{
-		$outputdata .= "Unzipping " . $file . "\n";
-		$outputdata .= shell_exec('unzip -o ' . $file . ' -d ' . BROWSE_BASEDIR . $session->temp_folder_write . "/" . $session->temp_folder );
-		
-	}
+	$outputdata .= "Unzipping " . $file . "\n";
+	$outputdata .= shell_exec('unzip -o "' . $file . '" -d "' . $dest . '"' );
+
 	
-	// create a handler to read the directory contents
-	$handler = opendir(".");
-	
-	echo "Please choose a file to unzip: " . "<br>";
-	
-	// A blank action field posts the form to itself
-	echo '<FORM action="" method="get">';
-	
-	$found = FALSE; // Used to see if there were any valid files
-	
-	// keep going until all files in directory have been read
-	while ($file = readdir($handler))
-	{
-		if (preg_match ("/.zip$/i", $file))
-		{
-			echo '<input type="radio" name="file" value=' . $file . '> ' . $file . '<br>';
-			$found = true;
-		}
-	}
-	
-	closedir($handler);	
-	
-	
-	
-	
+	$result['shell_log'] = $outputdata;
 	
 	return json_encode($result);
 } // commandUpgradeFiles
@@ -346,10 +321,7 @@ function displayTestsPageHTML() {
 	echo "<button onclick=\"startBrowserDialog();\">Test Me</button>\n";
 
 	echo "<div class=\"center\">\n<table><tr>";
-	echo "<th>Description</th>" . "<th>Value</th>" . "<th>Status</th>" . "<th>Actions</th>";
-	echo "</tr>";
-
-
+	echo "<th>Description</th><th>Value</th><th>Status</th><th>Actions</th></tr>";
 
 	foreach($testList as $key => $value) {
 		echo "<tr" . $testList[$key]->getS() . "><td>" . $testList[$key]->description . "</td>\n";
@@ -358,7 +330,12 @@ function displayTestsPageHTML() {
 		echo "<td>" . $testList[$key]->getA() . "</td></tr>\n";
 	}
 	echo "</table>\n</div>\n";
-
+	
+	echo "<div class=\"center\">\n<table><tr>";
+	echo "<th>Step</th><th>Action</th><th>Status</th></tr>";
+	echo "<tr><td>1. Upgrade files</td><td><button onclick=\"runStep('upgradefiles'); false\">Upgrade files</button></td><td><div id=\"result_upgradefiles\"></div></td></tr>";
+	echo "</table>\n</div>\n";
+	
 	//phpinfo();
 	//$file_browser=&new file_browser('images', "elementary");
 
@@ -679,6 +656,29 @@ function createFolder(target) {
 
 }
 
+function runStep(step) {
+
+	var a=new Ajax();
+	with (a){
+		Method="GET";
+		URL="<?= THIS_SCRIPT ?>";
+		Data="command="+step+"";
+		ResponseFormat="json";
+		ResponseHandler=commandRunStepHandler;
+		Send();
+	}
+
+	var commandRunStepHandler=function(res){
+		
+		for (i=0;i<res.contents.length;i++){
+			var f=res.contents[i];
+			alert("RunStep Response.content: " . f);
+
+			//TODO:Set output to "result_<step>"
+		}
+	}
+	
+}
 
 </script>
 <?php
