@@ -32,6 +32,7 @@ $defaultValue['bash_folder'] = BROWSE_BASEDIR . 'bin';
 $defaultValue['relative_dir'] = trailingSlash(str_replace(BROWSE_BASEDIR, '', dirname($_SERVER["SCRIPT_FILENAME"])));
 $defaultValue['script_version'] = '0.1 ' .  date ("Y-m-d H:i:s.", filemtime(__FILE__));
 $defaultValue['temp_folder'] = "tmp_upgrade/";
+$defaultValue['oscommerce_basename'] = 'oscommerce-2.3.4'; 
 
 // Values used for tests
 $defaultValue['php_version'] = '5.3';
@@ -40,7 +41,7 @@ $defaultValue['temp_folder_write'] = trailingSlash($defaultValue['relative_dir']
 $defaultValue['upgrade_sql_script'] = trailingSlash($defaultValue['temp_folder_write']); 
 $defaultValue['upgrade_sql_script'] .= trailingSlash($defaultValue['temp_folder']) . 'sql_changes_ms2.2_to_2.3.4.sql';
 $defaultValue['oscommerce_file'] = trailingSlash($defaultValue['temp_folder_write']);
-$defaultValue['oscommerce_file'] .= trailingSlash($defaultValue['temp_folder']) . 'oscommerce-2.3.4.zip';
+$defaultValue['oscommerce_file'] .= trailingSlash($defaultValue['temp_folder']) . $defaultValue['oscommerce_basename'] . '.zip';
 $defaultValue['database_connection'] = "SELECT configuration_title, configuration_value FROM configuration WHERE configuration_id < 4";
 
 
@@ -79,7 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				Http::response200('OK', commandRunSQL()); break;
 			case 'upgradefiles': 	// set session variable
 				Http::response200('OK', commandUpgradeFiles()); break;
-			default: 
+			case 'upgradedatabase': 	// set session variable
+				Http::response200('OK', commandUpgradeDatabase()); break;
+				default: 
 				Http::response400('Bad Request for Command: ' . $command); break;
 		}
 	} else {
@@ -130,19 +133,58 @@ function commandUpgradeFiles() {
 	global $session;
 	$result = array('upgradefiles' => 'nothing', 'shell_log' => '');
 	$outputdata = '';
-	// TODO: overwrite osCommerce files
+	$unzipOutput = array();
+	$unzipStatus = -1;
+	$copyOutput = array();
+	$copyStatus = -1;
+	// TODO: Add Responsive Theme to installation
 
 	$file = BROWSE_BASEDIR . $session->oscommerce_file;
 	$dest = BROWSE_BASEDIR . $session->temp_folder_write . $session->temp_folder;
+	$catalog_src = trailingSlash($dest) . $session->oscommerce_basename . "/catalog/.";
+	$catalog_dst = trailingSlash(BROWSE_BASEDIR . $session->catalog_write);
+	
+	$excludes = $session->oscommerce_basename . "/catalog/includes/configure.php ";
+	$excludes .= $session->oscommerce_basename . "/catalog/admin/includes/configure.php ";
 	
 	$outputdata .= "Unzipping " . $file . "\n";
-	$outputdata .= shell_exec('unzip -o "' . $file . '" -d "' . $dest . '"' );
+	exec('unzip -o "' . $file . '" -x ' . $excludes . ' -d "' . $dest . '"', $unzipOutput, $unzipStatus);
+	$result['unzip_output'] = $unzipOutput;
+	$result['unzip_status'] = $unzipStatus;
 
-	
+	$outputdata .= "Overwriting files to " . $catalog_dst . " ...";
+	exec('cp -r -v -f -a ' . $catalog_src . ' ' . $catalog_dst, $copyOutput, $copyStatus);
+	$result['copy_output'] = $copyOutput;
+	$result['copy_status'] = $copyStatus;
+	$result['upgradefiles'] = 'completed';
 	$result['shell_log'] = $outputdata;
 	
 	return json_encode($result);
 } // commandUpgradeFiles
+
+function commandUpgradeDatabase() {
+	global $session;
+	$result = array('upgradedatabase' => 'nothing', 'shell_log' => '');
+	$mysqlOutput = array();
+	$mysqlStatus = -1;
+	$outputdata = '';
+	// TODO: overwrite osCommerce files
+
+	$file = BROWSE_BASEDIR . $session->upgrade_sql_script;
+	$command = "mysql -v -v -v -u".DB_SERVER_USERNAME." -p".DB_SERVER_PASSWORD." -h ".DB_SERVER." -D ".DB_DATABASE." 2>&1 < {$file}";
+	
+	$outputdata .= "Running Upgrade SQL " . $file . "\n";
+	$outputdata .= exec($command, $mysqlOutput, $mysqlStatus);
+
+	if ($mysqlStatus == 0) { $result['upgradedatabase'] = 'success'; }
+	else if ($mysqlStatus > 0) { $result['upgradedatabase'] = 'error'; } 
+	else { $result['upgradedatabase'] = 'warning'; }
+	$result['shell_log'] = $outputdata;
+	$result['mysql_log'] = $mysqlOutput;
+	$result['mysql_status'] = $mysqlStatus;
+
+	return json_encode($result);
+} // commandUpgradeDatabase
 
 function runBash($command) {
 	global $session;
@@ -334,6 +376,7 @@ function displayTestsPageHTML() {
 	echo "<div class=\"center\">\n<table><tr>";
 	echo "<th>Step</th><th>Action</th><th>Status</th></tr>";
 	echo "<tr><td>1. Upgrade files</td><td><button onclick=\"runStep('upgradefiles'); false\">Upgrade files</button></td><td><div id=\"result_upgradefiles\"></div></td></tr>";
+	echo "<tr><td>2. Upgrade database</td><td><button onclick=\"runStep('upgradedatabase'); false\">Upgrade database</button></td><td><div id=\"result_upgradedatabase\"></div></td></tr>";
 	echo "</table>\n</div>\n";
 	
 	//phpinfo();
@@ -654,9 +697,19 @@ function createFolder(target) {
 		Send();
 	}
 
-}
+} //createFolder
 
 function runStep(step) {
+	
+	var commandRunStepHandler=function(res){
+		console.log('commandRunStepHandler...');
+		for (i=0;i<res.length;i++){
+			var f=res[i];
+			alert("RunStep Response.content: " . f);
+
+			//TODO:Set output to "result_<step>"
+		}
+	}
 
 	var a=new Ajax();
 	with (a){
@@ -667,18 +720,7 @@ function runStep(step) {
 		ResponseHandler=commandRunStepHandler;
 		Send();
 	}
-
-	var commandRunStepHandler=function(res){
-		
-		for (i=0;i<res.contents.length;i++){
-			var f=res.contents[i];
-			alert("RunStep Response.content: " . f);
-
-			//TODO:Set output to "result_<step>"
-		}
-	}
-	
-}
+} //runStep
 
 </script>
 <?php
@@ -726,7 +768,6 @@ function testDatabaseConnection($query) {
 		$status['result'] = 'Crap, Connect OK but no query results';
 		$status['status'] = STATUS_WARNING; return $status;
 	}	
-	
 	
 	return $status;
 	
