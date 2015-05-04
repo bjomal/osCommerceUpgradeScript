@@ -4,6 +4,8 @@ ini_set('display_errors', 1);
 
 // NOTE! This script is created for PHP version 5.3+
 // 
+
+//TODO: Move this script where it's needed. Onlye on DB access and when generating new config files
 require('includes/configure.php');
 
 $title = "osCommerce upgrade script";
@@ -27,6 +29,10 @@ define('SESSION_NAME', "osCommerceUpgrade_YXBAFS");
 //define('BROWSE_BASEDIR', "./");
 define('BROWSE_BASEDIR', "/var/www/7zinz/");   // TODO: Set this dynamically as one level up.
 
+// Config file values
+$defaultValue['CONFIG_CATALOG'] = ['HTTP_SERVER', 'HTTPS_SERVER', 'ENABLE_SSL', 'HTTP_COOKIE_DOMAIN', 'HTTPS_COOKIE_DOMAIN', 'HTTP_COOKIE_PATH', 'HTTPS_COOKIE_PATH', 'DIR_WS_HTTP_CATALOG', 'DIR_WS_HTTPS_CATALOG', 'DIR_FS_CATALOG', 'DB_SERVER', 'DB_SERVER_USERNAME', 'DB_SERVER_PASSWORD', 'DB_DATABASE', 'USE_PCONNECT', 'STORE_SESSIONS', 'CFG_TIME_ZONE'];
+$defaultValue['CONFIG_ADMIN'] =  ['HTTP_SERVER', 'HTTPS_SERVER', 'ENABLE_SSL', 'HTTP_COOKIE_DOMAIN', 'HTTPS_COOKIE_DOMAIN', 'HTTP_COOKIE_PATH', 'HTTPS_COOKIE_PATH', 'HTTP_CATALOG_SERVER', 'HTTPS_CATALOG_SERVER', 'ENABLE_SSL_CATALOG', 'DIR_FS_DOCUMENT_ROOT', 'DIR_WS_ADMIN', 'DIR_WS_HTTPS_ADMIN', 'DIR_FS_ADMIN', 'DIR_WS_CATALOG', 'DIR_WS_HTTPS_CATALOG', 'DIR_FS_CATALOG', 'DB_SERVER', 'DB_SERVER_USERNAME', 'DB_SERVER_PASSWORD', 'DB_DATABASE', 'USE_PCONNECT', 'STORE_SESSIONS', 'CFG_TIME_ZONE'];
+
 // misc variables
 $defaultValue['bash_folder'] = BROWSE_BASEDIR . 'bin';
 $defaultValue['relative_dir'] = trailingSlash(str_replace(BROWSE_BASEDIR, '', dirname($_SERVER["SCRIPT_FILENAME"])));
@@ -43,7 +49,6 @@ $defaultValue['upgrade_sql_script'] .= trailingSlash($defaultValue['temp_folder'
 $defaultValue['oscommerce_file'] = trailingSlash($defaultValue['temp_folder_write']);
 $defaultValue['oscommerce_file'] .= trailingSlash($defaultValue['temp_folder']) . $defaultValue['oscommerce_basename'] . '.zip';
 $defaultValue['database_connection'] = "SELECT configuration_title, configuration_value FROM configuration WHERE configuration_id < 4";
-
 
 $session = new Session(SESSION_NAME);
 
